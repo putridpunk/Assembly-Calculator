@@ -1,6 +1,6 @@
 # Assembly-Calculator
 
-A scientific calculator written **entirely in x86-64 assembly** — the maths engine, the expression parser, the number formatter *and* the native Windows GUI. There is no C, no C runtime and no `libm`: the executable is about 12 KB and talks directly to `user32` / `gdi32` / `kernel32`.
+A scientific calculator written **entirely in x86-64 assembly** — the maths engine, the expression parser, the number formatter *and* the native Windows GUI. There is no C, no C runtime and no `libm`: the executable is about 14 KB and talks directly to `user32` / `gdi32` / `kernel32`.
 
 <p align="center"><img src="docs/screenshot.png" width="320" alt="Calculator screenshot"></p>
 
@@ -62,11 +62,16 @@ build.ps1           build script
 
 **Formatting.** Results are printed with up to 15 significant digits and trailing zeros removed (`0.1 + 0.2` shows `0.3`). The decimal exponent is found with `fyl2x` then corrected against `10^e` computed by binary exponentiation; digit extraction uses multiply-by-reciprocal instead of `div`. Very large or small values switch to `d.ddde+XX`.
 
-**GUI.** One window class, **no child controls**. Everything is drawn by hand into a cached off-screen bitmap and blitted per *dirty rectangle*, so hovering a button repaints only that button. Hit-testing is two integer divisions plus a lookup table. All metrics and fonts scale with the system DPI, and the title bar follows the dark theme through `DwmSetWindowAttribute`.
+**GUI.** One window class, **no child controls and no bitmaps** — the "hand-built instrument" look is drawn entirely with GDI primitives:
+
+* a walnut-leather body with a dashed brass **stitched seam** and an engraved, letter-spaced title plaque;
+* a brass-bezelled **parchment display** with a ledger rule, a sepia angle-mode tag (`DEG`/`RAD`) and ink-coloured Cambria type;
+* **keys with real depth**: each is a dark side plus a face with an inked outline and a light top edge. Ivory for digits, brass for operators, walnut with italic labels for functions, red enamel for `=`, rust for clear/backspace, green enamel for the mode key. Hovering lightens a key; pressing sinks its face onto its side;
+* everything is rendered into a cached off-screen bitmap and blitted per *dirty rectangle*, so hovering a key repaints only that key. Hit-testing is two integer divisions plus a lookup table. Metrics and fonts scale with the system DPI, and the title bar is tinted to match through `DwmSetWindowAttribute`.
 
 ### Optimisation notes
 
-* Zero heap allocation, no CRT start-up, no imports beyond the window/GDI calls (≈12 KB binary).
+* Zero heap allocation, no CRT start-up, no imports beyond the window/GDI calls (≈14 KB binary).
 * API calls go straight through the import-address table (`call [__imp_X]`), skipping the linker thunk.
 * One parser pass per keystroke; state lives in fixed `.bss` buffers.
 * Partial repaints, a persistent back buffer, and `WM_ERASEBKGND` suppressed (no flicker).

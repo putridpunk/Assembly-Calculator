@@ -32,7 +32,16 @@
         .equ    MS_FBIG,   60
         .equ    MS_FMED,   64
         .equ    MS_FSMALL, 68
-        .equ    NM,        18
+        .equ    MS_DEPTH,  72           # key thickness (visible edge under the face)
+        .equ    MS_PANELT, 76           # top of display panel
+        .equ    MS_PLAQT,  80           # title plaque band
+        .equ    MS_PLAQB,  84
+        .equ    MS_FITAL,  88           # italic key font
+        .equ    MS_FTITLE, 92           # plaque font
+        .equ    MS_STITCH, 96           # inset of the stitched border
+        .equ    MS_BEZEL,  100          # brass bezel thickness around the display
+        .equ    MS_TRACK,  104          # plaque letter spacing
+        .equ    NM,        27
         .equ    NB,        34           # number of buttons
         .equ    NT,        13           # number of token display rewrites
 
@@ -43,18 +52,29 @@
         .equ    A_DEG,     0x83
         .equ    A_SQUARE,  0x84
 
-# -------- colours (COLORREF = 0x00BBGGRR) --------
-        .equ    C_BG,      0x001C1715
-        .equ    C_PANEL,   0x0014100E
-        .equ    C_TEXT,    0x00FAF6F4
-        .equ    C_DIM,     0x009C867D
-        .equ    C_ERR,     0x00867BFF
+# -------- palette (COLORREF = 0x00BBGGRR) --------
+.macro RGB name, r, g, b
+        .equ    \name, (\b << 16) | (\g << 8) | \r
+.endm
+        RGB     C_LEATHER, 42, 31, 23           # window body
+        RGB     C_THREAD,  186, 152, 98         # stitching
+        RGB     C_BRASS,   201, 165, 99         # plaque text / rules
+        RGB     C_BRASSD,  120, 92, 54
+        RGB     C_BEZEL,   150, 116, 64
+        RGB     C_PAPER,   233, 222, 195        # parchment
+        RGB     C_PAPERSH, 200, 186, 152
+        RGB     C_RULE,    205, 192, 160
+        RGB     C_INK,     38, 28, 20
+        RGB     C_SEPIA,   133, 112, 80
+        RGB     C_ERR,     156, 42, 36
+        RGB     C_OUTLINE, 24, 17, 11
 
 # ================================================================== data
         .section .rdata,"dr"
 s_class:    .string16 "AsmCalcWindow"
 s_title:    .string16 "Assembly Calculator"
-s_face:     .string16 "Segoe UI"
+s_face:     .string16 "Cambria"
+s_plaque:   .string16 "ASSEMBLY CALCULATOR"
 s_zero:     .asciz    "0"
 s_errtxt:   .string16 "Error"
 
@@ -93,16 +113,22 @@ L_7:        .string16 "7"
 L_8:        .string16 "8"
 L_9:        .string16 "9"
 
-# style table: normal, hover, pressed, text   (0 digit 1 op 2 func 3 equals 4 danger 5 mode 6 util)
+# style table (32 bytes each): normal, hover, pressed, text, side, highlight, pad[2]
+#   0 ivory digit   1 brass operator   2 walnut function   3 red enamel (=)
+#   4 rust (clear)  5 green enamel (mode)   6 bone utility
+.macro STYLE nr,ng,nb, hr,hg,hb, pr,pg,pb, tr,tg,tb, sr,sg,sb, lr,lg,lb
+        .long   (\nb<<16)|(\ng<<8)|\nr, (\hb<<16)|(\hg<<8)|\hr, (\pb<<16)|(\pg<<8)|\pr
+        .long   (\tb<<16)|(\tg<<8)|\tr, (\sb<<16)|(\sg<<8)|\sr, (\lb<<16)|(\lg<<8)|\lr, 0, 0
+.endm
         .balign 16
 g_styles:
-        .long   0x00332A26, 0x003F3430, 0x004C3F3A, 0x00FAF6F4
-        .long   0x006B3F3A, 0x00804C46, 0x00945B54, 0x00FFFFFF
-        .long   0x00332B1C, 0x00433824, 0x0055462C, 0x00C4D65F
-        .long   0x00FF636C, 0x00FF767E, 0x00E6525A, 0x00FFFFFF
-        .long   0x0026223A, 0x002F2A4A, 0x0039325C, 0x00867BFF
-        .long   0x001E3034, 0x00273D43, 0x00304B52, 0x0057C8FF
-        .long   0x0028211E, 0x00352C28, 0x00433732, 0x00C5B2AA
+        STYLE   232,222,196, 242,233,210, 212,201,172, 44,33,24,    139,124,96,  252,246,228
+        STYLE   193,154,82,  206,168,98,  174,137,70,  40,28,14,    118,88,40,   232,202,130
+        STYLE   94,66,46,    108,78,56,   78,54,37,    236,200,132, 44,29,19,    134,102,74
+        STYLE   158,50,42,   176,62,52,   140,42,35,   252,238,216, 84,22,18,    204,100,86
+        STYLE   170,94,68,   184,106,80,  150,80,58,   255,241,222, 98,48,32,    210,136,108
+        STYLE   62,94,74,    74,110,86,   52,80,62,    242,228,178, 28,48,36,    104,142,112
+        STYLE   203,189,157, 216,203,172, 186,172,142, 70,50,32,    118,102,74,  230,218,188
 
 # key -> action pairs for WM_CHAR (terminated by 0)
 g_keymap:
@@ -129,7 +155,8 @@ g_toktbl:
 
         .data
         .balign 16
-g_mb:   .long   14, 8, 62, 50, 124, 370, 536, 14, 16, 116, 22, 48, 48, 112, -19, -46, -30, -18
+g_mb:   .long   16, 8, 62, 48, 146, 374, 546, 12, 16, 132, 44, 68, 68, 126, -21, -46, -30, -17
+        .long   4, 36, 10, 30, -22, -12, 7, 4, 2
 g_hover:    .long   -1
 g_press:    .long   -1
 g_lbl_deg:  .short  'D', 'E', 'G', 0
@@ -187,6 +214,10 @@ g_fbtn:     .skip   8
 g_fbig:     .skip   8
 g_fmed:     .skip   8
 g_fsmall:   .skip   8
+g_fital:    .skip   8
+g_ftitle:   .skip   8
+g_hpen:     .skip   8
+g_stitchpen: .skip  8
 g_dpi:      .skip   4
 g_pl:       .skip   4                   # current paint rectangle
 g_pt:       .skip   4
@@ -523,13 +554,18 @@ do_action:
         ret
 
 # draw_button: ecx = index   (draws into the off-screen DC, honours paint rect)
+#   A key is two stacked rounded rectangles: the dark "side" (its thickness)
+#   and the face on top.  Pressing lowers the face onto the side.  Both carry a
+#   thin inked outline and the face gets a light edge along the top.
 draw_button:
         push    rbx
         push    rsi
         push    rdi
-        sub     rsp, 112
+        push    r12
+        push    r13
+        sub     rsp, 128                                # 5 pushes + 128: aligned
         mov     esi, ecx
-        lea     rdx, [rsp + 64]
+        lea     rdx, [rsp + 64]                         # RECT of the whole key
         call    btn_rect
         mov     rbx, rax
         mov     eax, dword ptr [rsp + 72]
@@ -545,23 +581,34 @@ draw_button:
         cmp     eax, dword ptr [rip + g_pb]
         jge     .db_ret
         movzx   eax, byte ptr [rbx + 12]
-        shl     eax, 4
+        mov     r13d, eax                               # style
+        shl     eax, 5
         lea     rdi, [rip + g_styles]
         add     rdi, rax
+        xor     r12d, r12d                              # face offset (sink when pressed)
         xor     eax, eax
         cmp     esi, dword ptr [rip + g_press]
         jne     1f
         mov     eax, 8
+        mov     r12d, dword ptr [rip + g_ms + MS_DEPTH]
+        sub     r12d, 2
         jmp     2f
 1:      cmp     esi, dword ptr [rip + g_hover]
         jne     2f
         mov     eax, 4
-2:      mov     edx, dword ptr [rdi + rax]
+2:      mov     r8d, dword ptr [rdi + rax]              # face colour
+        mov     dword ptr [rsp + 96], r8d
+        # ---- side (thickness): from top+depth to bottom
         mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rdi + 16]
         API     SetDCBrushColor
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_OUTLINE
+        API     SetDCPenColor
         mov     rcx, qword ptr [rip + g_mdc]
         mov     edx, dword ptr [rsp + 64]
         mov     r8d, dword ptr [rsp + 68]
+        add     r8d, dword ptr [rip + g_ms + MS_DEPTH]
         mov     r9d, dword ptr [rsp + 72]
         mov     eax, dword ptr [rsp + 76]
         mov     qword ptr [rsp + 32], rax
@@ -569,9 +616,63 @@ draw_button:
         mov     qword ptr [rsp + 40], rax
         mov     qword ptr [rsp + 48], rax
         API     RoundRect
+        # ---- face
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rsp + 96]
+        API     SetDCBrushColor
+        mov     eax, dword ptr [rsp + 68]
+        add     eax, r12d
+        mov     dword ptr [rsp + 100], eax              # face top
+        mov     eax, dword ptr [rsp + 76]
+        sub     eax, dword ptr [rip + g_ms + MS_DEPTH]
+        add     eax, r12d
+        mov     dword ptr [rsp + 104], eax              # face bottom
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rsp + 64]
+        mov     r8d, dword ptr [rsp + 100]
+        mov     r9d, dword ptr [rsp + 72]
+        mov     eax, dword ptr [rsp + 104]
+        mov     qword ptr [rsp + 32], rax
+        mov     eax, dword ptr [rip + g_ms + MS_RAD]
+        mov     qword ptr [rsp + 40], rax
+        mov     qword ptr [rsp + 48], rax
+        API     RoundRect
+        # ---- light edge along the top of the face (not when pressed)
+        test    r12d, r12d
+        jnz     3f
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rdi + 20]
+        API     SetDCPenColor
+        mov     eax, dword ptr [rip + g_ms + MS_RAD]
+        shr     eax, 1
+        mov     dword ptr [rsp + 108], eax
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rsp + 64]
+        add     edx, eax
+        mov     r8d, dword ptr [rsp + 100]
+        inc     r8d
+        xor     r9d, r9d
+        API     MoveToEx
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rsp + 72]
+        sub     edx, dword ptr [rsp + 108]
+        mov     r8d, dword ptr [rsp + 100]
+        inc     r8d
+        API     LineTo
+3:      # ---- label (functions in italics)
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, qword ptr [rip + g_fbtn]
+        cmp     r13d, 2
+        jne     4f
+        mov     rdx, qword ptr [rip + g_fital]
+4:      API     SelectObject
         mov     rcx, qword ptr [rip + g_mdc]
         mov     edx, dword ptr [rdi + 12]
         API     SetTextColor
+        mov     eax, dword ptr [rsp + 100]              # text rect = face
+        mov     dword ptr [rsp + 68], eax
+        mov     eax, dword ptr [rsp + 104]
+        mov     dword ptr [rsp + 76], eax
         mov     rcx, qword ptr [rip + g_mdc]
         mov     rdx, qword ptr [rbx]
         mov     r8d, -1
@@ -579,29 +680,145 @@ draw_button:
         mov     qword ptr [rsp + 32], 0x825             # CENTER|VCENTER|SINGLELINE|NOPREFIX
         API     DrawTextW
 .db_ret:
-        add     rsp, 112
+        add     rsp, 128
+        pop     r13
+        pop     r12
         pop     rdi
         pop     rsi
         pop     rbx
         ret
 
-# draw_text_line: draws g_wbuf-style text.  Stack-passed by caller (see draw_display)
-
-# draw_display: panel, preview/expression line and the big result line
-draw_display:
+# draw_frame: stitched border and the engraved title plaque
+draw_frame:
         push    rbx
         push    rsi
         push    rdi
         sub     rsp, 160
+        # ---- stitched seam: dashed thread on a hollow rounded rectangle
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, qword ptr [rip + g_stitchpen]
+        API     SelectObject
+        mov     ecx, 5                                  # NULL_BRUSH
+        API     GetStockObject
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, rax
+        API     SelectObject
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rip + g_ms + MS_STITCH]
+        mov     r8d, edx
+        mov     r9d, dword ptr [rip + g_ms + MS_W]
+        sub     r9d, edx
+        mov     eax, dword ptr [rip + g_ms + MS_H]
+        sub     eax, edx
+        mov     qword ptr [rsp + 32], rax
+        mov     eax, dword ptr [rip + g_ms + MS_RAD]
+        mov     qword ptr [rsp + 40], rax
+        mov     qword ptr [rsp + 48], rax
+        API     RoundRect
+        mov     rcx, qword ptr [rip + g_mdc]            # back to the DC pen / brush
+        mov     rdx, qword ptr [rip + g_hpen]
+        API     SelectObject
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, qword ptr [rip + g_hbrush]
+        API     SelectObject
+        # ---- plaque: letter-spaced brass caption flanked by two fine rules
+        mov     eax, dword ptr [rip + g_ms + MS_PLAQT]
+        cmp     eax, dword ptr [rip + g_pb]
+        jge     .df_ret
+        mov     eax, dword ptr [rip + g_ms + MS_PLAQB]
+        cmp     eax, dword ptr [rip + g_pt]
+        jle     .df_ret
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, qword ptr [rip + g_ftitle]
+        API     SelectObject
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rip + g_ms + MS_TRACK]
+        API     SetTextCharacterExtra
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_BRASS
+        API     SetTextColor
+        mov     rcx, qword ptr [rip + g_mdc]
+        lea     rdx, [rip + s_plaque]
+        mov     r8d, 19
+        lea     r9, [rsp + 104]                         # SIZE
+        API     GetTextExtentPoint32W
+        mov     eax, dword ptr [rip + g_ms + MS_W]      # text rectangle (whole width, centred)
+        mov     dword ptr [rsp + 72], eax
+        mov     dword ptr [rsp + 64], 0
+        mov     eax, dword ptr [rip + g_ms + MS_PLAQT]
+        mov     dword ptr [rsp + 68], eax
+        mov     eax, dword ptr [rip + g_ms + MS_PLAQB]
+        mov     dword ptr [rsp + 76], eax
+        mov     rcx, qword ptr [rip + g_mdc]
+        lea     rdx, [rip + s_plaque]
+        mov     r8d, 19
+        lea     r9, [rsp + 64]
+        mov     qword ptr [rsp + 32], 0x825
+        API     DrawTextW
+        mov     rcx, qword ptr [rip + g_mdc]
+        xor     edx, edx
+        API     SetTextCharacterExtra
+        # rules: from the margin to (centre - text/2 - gap), mirrored on the right
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_BRASSD
+        API     SetDCPenColor
+        mov     eax, dword ptr [rip + g_ms + MS_PLAQT]
+        add     eax, dword ptr [rip + g_ms + MS_PLAQB]
+        shr     eax, 1
+        mov     dword ptr [rsp + 112], eax              # y
+        mov     eax, dword ptr [rsp + 104]              # text width
+        shr     eax, 1
+        add     eax, dword ptr [rip + g_ms + MS_M]
+        mov     ecx, dword ptr [rip + g_ms + MS_W]
+        shr     ecx, 1
+        sub     ecx, eax                                # left rule ends here
+        mov     dword ptr [rsp + 116], ecx
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rip + g_ms + MS_M]
+        mov     r8d, dword ptr [rsp + 112]
+        xor     r9d, r9d
+        API     MoveToEx
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, dword ptr [rsp + 116]
+        mov     r8d, dword ptr [rsp + 112]
+        API     LineTo
+        mov     edx, dword ptr [rip + g_ms + MS_W]
+        sub     edx, dword ptr [rsp + 116]
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     r8d, dword ptr [rsp + 112]
+        xor     r9d, r9d
+        API     MoveToEx
+        mov     edx, dword ptr [rip + g_ms + MS_W]
+        sub     edx, dword ptr [rip + g_ms + MS_M]
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     r8d, dword ptr [rsp + 112]
+        API     LineTo
+.df_ret:
+        add     rsp, 160
+        pop     rdi
+        pop     rsi
+        pop     rbx
+        ret
+
+# draw_display: brass bezel, parchment, ledger rule, mode tag, expression/result
+draw_display:
+        push    rbx
+        push    rsi
+        push    rdi
+        sub     rsp, 176
         mov     eax, dword ptr [rip + g_pt]
         cmp     eax, dword ptr [rip + g_ms + MS_Y0]
         jge     .dd_ret
+        # ---- bezel
         mov     rcx, qword ptr [rip + g_mdc]
-        mov     edx, C_PANEL
+        mov     edx, C_BEZEL
         API     SetDCBrushColor
         mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_OUTLINE
+        API     SetDCPenColor
+        mov     rcx, qword ptr [rip + g_mdc]
         mov     edx, dword ptr [rip + g_ms + MS_M]
-        mov     r8d, edx
+        mov     r8d, dword ptr [rip + g_ms + MS_PANELT]
         mov     r9d, dword ptr [rip + g_ms + MS_W]
         sub     r9d, edx
         mov     eax, dword ptr [rip + g_ms + MS_PANELB]
@@ -610,6 +827,68 @@ draw_display:
         mov     qword ptr [rsp + 40], rax
         mov     qword ptr [rsp + 48], rax
         API     RoundRect
+        # ---- parchment
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_PAPER
+        API     SetDCBrushColor
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_BRASSD
+        API     SetDCPenColor
+        mov     eax, dword ptr [rip + g_ms + MS_BEZEL]
+        mov     edx, dword ptr [rip + g_ms + MS_M]
+        add     edx, eax
+        mov     r8d, dword ptr [rip + g_ms + MS_PANELT]
+        add     r8d, eax
+        mov     r9d, dword ptr [rip + g_ms + MS_W]
+        sub     r9d, dword ptr [rip + g_ms + MS_M]
+        sub     r9d, eax
+        mov     ecx, dword ptr [rip + g_ms + MS_PANELB]
+        sub     ecx, eax
+        mov     qword ptr [rsp + 32], rcx
+        mov     eax, dword ptr [rip + g_ms + MS_RAD]
+        shr     eax, 1
+        mov     qword ptr [rsp + 40], rax
+        mov     qword ptr [rsp + 48], rax
+        mov     rcx, qword ptr [rip + g_mdc]
+        API     RoundRect
+        # ---- recessed look: soft shade along the top edge of the paper
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_PAPERSH
+        API     SetDCPenColor
+        mov     eax, dword ptr [rip + g_ms + MS_BEZEL]
+        mov     edx, dword ptr [rip + g_ms + MS_M]
+        add     edx, eax
+        add     edx, 6
+        mov     r8d, dword ptr [rip + g_ms + MS_PANELT]
+        add     r8d, eax
+        inc     r8d
+        mov     dword ptr [rsp + 120], r8d
+        mov     rcx, qword ptr [rip + g_mdc]
+        xor     r9d, r9d
+        API     MoveToEx
+        mov     edx, dword ptr [rip + g_ms + MS_W]
+        sub     edx, dword ptr [rip + g_ms + MS_M]
+        sub     edx, dword ptr [rip + g_ms + MS_BEZEL]
+        sub     edx, 6
+        mov     r8d, dword ptr [rsp + 120]
+        mov     rcx, qword ptr [rip + g_mdc]
+        API     LineTo
+        # ---- ledger rule between the two lines
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_RULE
+        API     SetDCPenColor
+        mov     edx, dword ptr [rip + g_ms + MS_M]
+        add     edx, dword ptr [rip + g_ms + MS_INSET]
+        mov     r8d, dword ptr [rip + g_ms + MS_L1B]
+        mov     rcx, qword ptr [rip + g_mdc]
+        xor     r9d, r9d
+        API     MoveToEx
+        mov     edx, dword ptr [rip + g_ms + MS_W]
+        sub     edx, dword ptr [rip + g_ms + MS_M]
+        sub     edx, dword ptr [rip + g_ms + MS_INSET]
+        mov     r8d, dword ptr [rip + g_ms + MS_L1B]
+        mov     rcx, qword ptr [rip + g_mdc]
+        API     LineTo
         mov     eax, dword ptr [rip + g_ms + MS_M]      # text rectangle: left / right
         add     eax, dword ptr [rip + g_ms + MS_INSET]
         mov     dword ptr [rsp + 64], eax
@@ -619,7 +898,23 @@ draw_display:
         mov     dword ptr [rsp + 72], ecx
         sub     ecx, eax
         mov     dword ptr [rsp + 96], ecx               # available width
-        # ---------------- line 1: preview, or the expression once evaluated
+        # ---- line 1: angle-mode tag (left) + preview / expression (right)
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     edx, C_SEPIA
+        API     SetTextColor
+        mov     rcx, qword ptr [rip + g_mdc]
+        mov     rdx, qword ptr [rip + g_fsmall]
+        API     SelectObject
+        mov     eax, dword ptr [rip + g_ms + MS_L1T]
+        mov     dword ptr [rsp + 68], eax
+        mov     eax, dword ptr [rip + g_ms + MS_L1B]
+        mov     dword ptr [rsp + 76], eax
+        mov     rcx, qword ptr [rip + g_mdc]
+        lea     rdx, [rip + g_lbl_deg]
+        mov     r8d, 3
+        lea     r9, [rsp + 64]
+        mov     qword ptr [rsp + 32], 0x824             # LEFT|VCENTER|SINGLELINE|NOPREFIX
+        API     DrawTextW
         lea     rsi, [rip + g_wbuf]
         movzx   eax, byte ptr [rip + g_state]
         xor     edi, edi                                # length
@@ -644,25 +939,15 @@ draw_display:
         test    edi, edi
         jz      .dd_line2
         mov     rcx, qword ptr [rip + g_mdc]
-        mov     edx, C_DIM
-        API     SetTextColor
-        mov     rcx, qword ptr [rip + g_mdc]
-        mov     rdx, qword ptr [rip + g_fsmall]
-        API     SelectObject
-        mov     eax, dword ptr [rip + g_ms + MS_L1T]
-        mov     dword ptr [rsp + 68], eax
-        mov     eax, dword ptr [rip + g_ms + MS_L1B]
-        mov     dword ptr [rsp + 76], eax
-        mov     rcx, qword ptr [rip + g_mdc]
         mov     rdx, rsi
         mov     r8d, edi
         lea     r9, [rsp + 64]
         mov     qword ptr [rsp + 32], 0x826             # RIGHT|VCENTER|SINGLELINE|NOPREFIX
         API     DrawTextW
 .dd_line2:
-        # ---------------- line 2: expression while typing, result afterwards
+        # ---- line 2: expression while typing, result afterwards
         movzx   eax, byte ptr [rip + g_state]
-        mov     ebx, C_TEXT
+        mov     ebx, C_INK
         cmp     eax, 1
         je      .dd_res
         cmp     eax, 2
@@ -715,7 +1000,7 @@ draw_display:
         mov     qword ptr [rsp + 32], 0x826
         API     DrawTextW
 .dd_ret:
-        add     rsp, 160
+        add     rsp, 176
         pop     rdi
         pop     rsi
         pop     rbx
@@ -875,16 +1160,14 @@ WndProc:
         mov     eax, dword ptr [rsp + 80 + 24]
         mov     dword ptr [rip + g_pb], eax
         mov     rcx, qword ptr [rip + g_mdc]
-        mov     edx, C_BG
+        mov     edx, C_LEATHER
         API     SetDCBrushColor
         mov     rcx, qword ptr [rip + g_mdc]
         lea     rdx, [rsp + 80 + 12]
         mov     r8, qword ptr [rip + g_hbrush]
         API     FillRect
+        call    draw_frame
         call    draw_display
-        mov     rcx, qword ptr [rip + g_mdc]
-        mov     rdx, qword ptr [rip + g_fbtn]
-        API     SelectObject
         xor     esi, esi
 1:      mov     ecx, esi
         call    draw_button
@@ -916,13 +1199,13 @@ WndProc:
         ret
 
 # =================================================================== Start
-.macro MKFONT msidx, weight, dest
+.macro MKFONT msidx, weight, italic, dest
         mov     ecx, dword ptr [rip + g_ms + \msidx]
         xor     edx, edx
         xor     r8d, r8d
         xor     r9d, r9d
         mov     qword ptr [rsp + 32], \weight
-        mov     qword ptr [rsp + 40], 0
+        mov     qword ptr [rsp + 40], \italic
         mov     qword ptr [rsp + 48], 0
         mov     qword ptr [rsp + 56], 0
         mov     qword ptr [rsp + 64], 1                 # DEFAULT_CHARSET
@@ -1011,10 +1294,17 @@ Start:
         mov     qword ptr [rsp + 128 + 64], rax
         lea     rcx, [rsp + 128]
         API     RegisterClassExW
-        MKFONT  MS_FBTN, 600, g_fbtn
-        MKFONT  MS_FBIG, 300, g_fbig
-        MKFONT  MS_FMED, 300, g_fmed
-        MKFONT  MS_FSMALL, 400, g_fsmall
+        MKFONT  MS_FBTN,   700, 0, g_fbtn
+        MKFONT  MS_FITAL,  700, 1, g_fital
+        MKFONT  MS_FBIG,   400, 0, g_fbig
+        MKFONT  MS_FMED,   400, 0, g_fmed
+        MKFONT  MS_FSMALL, 400, 1, g_fsmall
+        MKFONT  MS_FTITLE, 700, 0, g_ftitle
+        mov     ecx, 1                                  # PS_DASH, 1px: the stitching thread
+        mov     edx, 1
+        mov     r8d, C_THREAD
+        API     CreatePen
+        mov     qword ptr [rip + g_stitchpen], rax
         # outer window size from the wanted client size
         mov     dword ptr [rsp + 208], 0
         mov     dword ptr [rsp + 212], 0
@@ -1053,9 +1343,20 @@ Start:
         lea     r8, [rsp + 224]
         mov     r9d, 4
         API     DwmSetWindowAttribute
-        mov     dword ptr [rsp + 224], C_BG
+        mov     dword ptr [rsp + 224], C_LEATHER
         mov     rcx, rsi
         mov     edx, 35                                 # DWMWA_CAPTION_COLOR
+        lea     r8, [rsp + 224]
+        mov     r9d, 4
+        API     DwmSetWindowAttribute
+        mov     rcx, rsi
+        mov     edx, 34                                 # DWMWA_BORDER_COLOR
+        lea     r8, [rsp + 224]
+        mov     r9d, 4
+        API     DwmSetWindowAttribute
+        mov     dword ptr [rsp + 224], C_BRASS
+        mov     rcx, rsi
+        mov     edx, 36                                 # DWMWA_TEXT_COLOR
         lea     r8, [rsp + 224]
         mov     r9d, 4
         API     DwmSetWindowAttribute
@@ -1083,8 +1384,9 @@ Start:
         mov     rcx, qword ptr [rip + g_mdc]
         mov     rdx, rax
         API     SelectObject
-        mov     ecx, 8                                  # NULL_PEN
+        mov     ecx, 19                                 # DC_PEN
         API     GetStockObject
+        mov     qword ptr [rip + g_hpen], rax
         mov     rcx, qword ptr [rip + g_mdc]
         mov     rdx, rax
         API     SelectObject
